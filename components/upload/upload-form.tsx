@@ -4,8 +4,12 @@ import { useUploadThing } from "@/utils/uploadthing";
 import UploadFormInput from "./upload-form-input";
 import { z } from "zod";
 import { toast } from "sonner";
-import { generatePdfSummary } from "@/actions/upload-actions";
+import {
+  generatePdfSummary,
+  storePdfSummaryAction,
+} from "@/actions/upload-actions";
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const schema = z.object({
   file: z
@@ -23,6 +27,7 @@ const schema = z.object({
 export default function UploadForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
   const { startUpload, routeConfig } = useUploadThing("pdfUploader", {
     onClientUploadComplete: () => {
@@ -89,28 +94,41 @@ export default function UploadForm() {
       console.log(resp);
 
       // parse the pdf using langchain
-      const result = generatePdfSummary(resp);
+      const result = await generatePdfSummary(resp);
 
       const { data = null, message = null } = result || {};
 
       if (data) {
+        let storedResult: any;
         toast("🗎 Saving PDF...", {
           description: "Hang tight! We are saving your summary!✨",
         });
 
-        formRef.current?.reset();
         if (data.summary) {
           // save summary to database
+          storedResult = await storePdfSummaryAction({
+            summary: data.summary,
+            fileUrl: resp[0].serverData.file.ufsUrl,
+            title: data.title,
+            fileName: file.name,
+          });
+
+          toast("✨ Summary Generated", {
+            description:
+              "Your PDF has been successfully summarized and saved!✨",
+          });
+
+          formRef.current?.reset();
+          router.push(`/summaries/${storedResult.data.id}`);
+          // todo: redirect to the [id] summary page
         }
       }
-
-      // summaries the PDF using AI
-      // save the summary to the database
-      // redirect to the [id] summary page
     } catch (error) {
       setIsLoading(false);
       console.error("Error occurred", error);
       formRef.current?.reset();
+    } finally {
+      setIsLoading(false);
     }
   };
 
